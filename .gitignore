@@ -1,5 +1,6 @@
 # compiled output
-/dist
+# Note: /dist must NOT be gitignored — Railway/Railpack excludes gitignored
+# paths from the deploy image even when created during the build step.
 /node_modules
 /build
 
