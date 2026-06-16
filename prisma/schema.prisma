@@ -14,7 +14,7 @@ model TrackingEvent {
   sessionId String?  @map("session_id") @db.VarChar(100)
   metadata  Json?
   createdAt DateTime @map("created_at") @db.Timestamptz(6)
-  platfrom  String?  @map("platfrom") @db.VarChar(50)
+  platform  String?  @map("platform") @db.VarChar(50)
 
   @@map("tracking_events")
 }
