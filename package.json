@@ -12,7 +12,7 @@
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
-    "start:prod": "npm run build && node scripts/migrate.js && node dist/main.js",
+    "start:prod": "node scripts/migrate.js && node dist/src/main.js",
     "migrate:deploy": "node scripts/migrate.js",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "test": "jest",
