@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateEventDto } from './create-event.dto';
 import { DedupService } from './dedup.service';
+import { CreateEventsBatchDto } from './create-events-batch.dto';
 
 @Injectable()
 export class TrackingService {
@@ -57,5 +58,20 @@ export class TrackingService {
       );
       throw error;
     }
+  }
+
+  async recordEvents(dto: CreateEventsBatchDto): Promise<{ recorded: number }> {
+    const now = new Date();
+    const data = dto.events.map((e) => ({
+      eventType: e.eventType,
+      contentId: e.contentId,
+      sessionId: e.sessionId,
+      userId: e.userId,
+      metadata: e.metadata as Prisma.InputJsonValue | undefined,
+      platform: e.platform,
+      createdAt: now,
+    }));
+    const result = await this.prisma.trackingEvent.createMany({ data });
+    return { recorded: result.count };
   }
 }
