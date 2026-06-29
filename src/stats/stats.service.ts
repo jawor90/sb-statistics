@@ -1,12 +1,126 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
+import { DailyStat, Prisma, Stat } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { QueryDailyStatsDto } from './dto/query-daily-stats.dto';
+import { QueryStatsDto } from './dto/query-stats.dto';
+
+export interface PaginatedResponse<T> {
+  data: T[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
 
 @Injectable()
 export class StatsService {
   private readonly logger = new Logger(StatsService.name);
 
   constructor(private readonly prisma: PrismaService) {}
+
+  async findStats(
+    query: QueryStatsDto,
+  ): Promise<PaginatedResponse<Stat>> {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+    const sortBy = query.sortBy ?? 'views';
+    const sortOrder = query.sortOrder ?? 'desc';
+
+    const where: Prisma.StatWhereInput = {};
+
+    if (query.contentId) {
+      where.contentId = {
+        contains: query.contentId,
+        mode: 'insensitive',
+      };
+    }
+
+    if (query.minViews !== undefined) {
+      where.views = { gte: BigInt(query.minViews) };
+    }
+
+    if (query.minImpressions !== undefined) {
+      where.impressions = { gte: BigInt(query.minImpressions) };
+    }
+
+    const [data, total] = await this.prisma.$transaction([
+      this.prisma.stat.findMany({
+        where,
+        orderBy: { [sortBy]: sortOrder },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.stat.count({ where }),
+    ]);
+
+    return {
+      data,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit) || 0,
+      },
+    };
+  }
+
+  async findStatByContentId(contentId: string): Promise<Stat> {
+    const stat = await this.prisma.stat.findUnique({
+      where: { contentId },
+    });
+
+    if (!stat) {
+      throw new NotFoundException(`Stat not found for contentId: ${contentId}`);
+    }
+
+    return stat;
+  }
+
+  async findDailyStats(
+    query: QueryDailyStatsDto,
+  ): Promise<PaginatedResponse<DailyStat>> {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+    const sortBy = query.sortBy ?? 'day';
+    const sortOrder = query.sortOrder ?? 'desc';
+
+    const where: Prisma.DailyStatWhereInput = {};
+
+    if (query.from || query.to) {
+      where.day = {};
+
+      if (query.from) {
+        where.day.gte = new Date(query.from);
+      }
+
+      if (query.to) {
+        where.day.lte = new Date(query.to);
+      }
+    }
+
+    const [data, total] = await this.prisma.$transaction([
+      this.prisma.dailyStat.findMany({
+        where,
+        orderBy: { [sortBy]: sortOrder },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.dailyStat.count({ where }),
+    ]);
+
+    return {
+      data,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit) || 0,
+      },
+    };
+  }
 
   @Cron('0 6 * * *', { name: 'daily-stats', timeZone: 'Europe/Warsaw' })
   async handleDailyStats(): Promise<void> {
