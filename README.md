@@ -23,7 +23,7 @@
 
 ## Description
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+Event tracking service built with [Nest](https://github.com/nestjs/nest). See [REST API documentation](docs/rest-api.md) for endpoint reference.
 
 ## Project setup
 
