@@ -24,8 +24,9 @@ model Stat {
   views     BigInt   @default(0)
   favorites BigInt   @default(0)
   calendar  BigInt   @default(0)
-  ctaClicks BigInt   @default(0) @map("cta_clicks")
-  updatedAt DateTime @map("updated_at") @db.Timestamptz(6)
+  ctaClicks   BigInt   @default(0) @map("cta_clicks")
+  impressions BigInt   @default(0)
+  updatedAt   DateTime @map("updated_at") @db.Timestamptz(6)
 
   @@map("stats")
 }

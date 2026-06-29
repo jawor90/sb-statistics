@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "stats" ADD COLUMN IF NOT EXISTS "impressions" BIGINT NOT NULL DEFAULT 0;

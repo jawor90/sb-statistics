@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Cron } from '@nestjs/schedule';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -11,6 +11,47 @@ export class StatsService {
   @Cron('0 6 * * *', { name: 'daily-stats', timeZone: 'Europe/Warsaw' })
   async handleDailyStats(): Promise<void> {
     await this.generateDailyStats();
+  }
+
+  @Cron(CronExpression.EVERY_HOUR, { name: 'content-stats' })
+  async handleContentStats(): Promise<void> {
+    await this.recalculateContentStats();
+  }
+
+  async recalculateContentStats(): Promise<{ contentIdsAffected: number }> {
+    this.logger.log('Recalculating content stats');
+
+    try {
+      const contentIdsAffected = await this.prisma.$executeRaw`
+        INSERT INTO stats (content_id, views, cta_clicks, impressions, updated_at)
+        SELECT
+          e.content_id,
+          COUNT(*) FILTER (WHERE e.event_type = 'view'),
+          COUNT(*) FILTER (WHERE e.event_type = 'cta_click'),
+          COUNT(*) FILTER (WHERE e.event_type = 'impression'),
+          now()
+        FROM tracking_events e
+        WHERE e.content_id IS NOT NULL
+        GROUP BY e.content_id
+        ON CONFLICT (content_id) DO UPDATE SET
+          views = EXCLUDED.views,
+          cta_clicks = EXCLUDED.cta_clicks,
+          impressions = EXCLUDED.impressions,
+          updated_at = EXCLUDED.updated_at
+      `;
+
+      this.logger.log(
+        `Content stats recalculated: ${contentIdsAffected} row(s) affected`,
+      );
+
+      return { contentIdsAffected };
+    } catch (error) {
+      this.logger.error(
+        'Failed to recalculate content stats',
+        error instanceof Error ? error.stack : String(error),
+      );
+      throw error;
+    }
   }
 
   async generateDailyStats(targetDay?: Date): Promise<void> {
