@@ -38,6 +38,10 @@ export class StatsService {
       };
     }
 
+    if (query.platform) {
+      where.platform = query.platform;
+    }
+
     if (query.minViews !== undefined) {
       where.views = { gte: BigInt(query.minViews) };
     }
@@ -67,16 +71,17 @@ export class StatsService {
     };
   }
 
-  async findStatByContentId(contentId: string): Promise<Stat> {
-    const stat = await this.prisma.stat.findUnique({
+  async findStatsByContentId(contentId: string): Promise<Stat[]> {
+    const stats = await this.prisma.stat.findMany({
       where: { contentId },
+      orderBy: { platform: 'asc' },
     });
 
-    if (!stat) {
+    if (stats.length === 0) {
       throw new NotFoundException(`Stat not found for contentId: ${contentId}`);
     }
 
-    return stat;
+    return stats;
   }
 
   async findDailyStats(
@@ -132,22 +137,24 @@ export class StatsService {
     await this.recalculateContentStats();
   }
 
-  async recalculateContentStats(): Promise<{ contentIdsAffected: number }> {
-    this.logger.log('Recalculating content stats');
+  async recalculateContentStats(): Promise<{ rowsAffected: number }> {
+    this.logger.log('Recalculating content stats per platform');
 
     try {
-      const contentIdsAffected = await this.prisma.$executeRaw`
-        INSERT INTO stats (content_id, views, cta_clicks, impressions, updated_at)
+      const rowsAffected = await this.prisma.$executeRaw`
+        INSERT INTO stats (content_id, platform, views, cta_clicks, impressions, updated_at)
         SELECT
           e.content_id,
+          e.platform,
           COUNT(*) FILTER (WHERE e.event_type = 'view'),
           COUNT(*) FILTER (WHERE e.event_type = 'cta_click'),
           COUNT(*) FILTER (WHERE e.event_type = 'impression'),
           now()
         FROM tracking_events e
         WHERE e.content_id IS NOT NULL
-        GROUP BY e.content_id
-        ON CONFLICT (content_id) DO UPDATE SET
+          AND e.platform IN ('web', 'ios', 'android')
+        GROUP BY e.content_id, e.platform
+        ON CONFLICT (content_id, platform) DO UPDATE SET
           views = EXCLUDED.views,
           cta_clicks = EXCLUDED.cta_clicks,
           impressions = EXCLUDED.impressions,
@@ -155,10 +162,10 @@ export class StatsService {
       `;
 
       this.logger.log(
-        `Content stats recalculated: ${contentIdsAffected} row(s) affected`,
+        `Content stats recalculated: ${rowsAffected} row(s) affected`,
       );
 
-      return { contentIdsAffected };
+      return { rowsAffected };
     } catch (error) {
       this.logger.error(
         'Failed to recalculate content stats',

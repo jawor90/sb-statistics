@@ -8,8 +8,11 @@ import {
   Min,
 } from 'class-validator';
 
+export const STATS_PLATFORMS = ['web', 'ios', 'android'] as const;
+
 export const STATS_SORT_FIELDS = [
   'contentId',
+  'platform',
   'views',
   'favorites',
   'calendar',
@@ -45,6 +48,10 @@ export class QueryStatsDto {
   @IsOptional()
   @IsString()
   contentId?: string;
+
+  @IsOptional()
+  @IsIn(STATS_PLATFORMS)
+  platform?: (typeof STATS_PLATFORMS)[number];
 
   @IsOptional()
   @Type(() => Number)

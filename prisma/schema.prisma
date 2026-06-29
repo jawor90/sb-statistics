@@ -20,14 +20,16 @@ model TrackingEvent {
 }
 
 model Stat {
-  contentId String   @id @map("content_id") @db.VarChar(100)
-  views     BigInt   @default(0)
-  favorites BigInt   @default(0)
-  calendar  BigInt   @default(0)
+  contentId   String   @map("content_id") @db.VarChar(100)
+  platform    String   @db.VarChar(50)
+  views       BigInt   @default(0)
+  favorites   BigInt   @default(0)
+  calendar    BigInt   @default(0)
   ctaClicks   BigInt   @default(0) @map("cta_clicks")
   impressions BigInt   @default(0)
   updatedAt   DateTime @map("updated_at") @db.Timestamptz(6)
 
+  @@id([contentId, platform])
   @@map("stats")
 }
 

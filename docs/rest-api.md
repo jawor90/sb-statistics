@@ -196,7 +196,7 @@ Submitting an empty array or more than 200 events returns `400 Bad Request`.
 
 ### GET /stats
 
-List aggregated content stats from the `stats` table. Supports offset pagination, filtering, and sorting.
+List aggregated content stats from the `stats` table. Each row is one `contentId` + `platform` pair (`web`, `ios`, or `android`). Supports offset pagination, filtering, and sorting.
 
 #### Query parameters
 
@@ -207,10 +207,11 @@ List aggregated content stats from the `stats` table. Supports offset pagination
 | `sortBy`         | `string` | `views`  | Sort field (see below)                                   |
 | `sortOrder`      | `string` | `desc`   | `asc` or `desc`                                          |
 | `contentId`      | `string` | —        | Case-insensitive substring match on `contentId`          |
+| `platform`       | `string` | —        | Exact platform filter: `web`, `ios`, or `android`        |
 | `minViews`       | `number` | —        | Minimum `views` count (inclusive)                        |
 | `minImpressions` | `number` | —        | Minimum `impressions` count (inclusive)                  |
 
-Allowed `sortBy` values: `contentId`, `views`, `favorites`, `calendar`, `ctaClicks`, `impressions`, `updatedAt`.
+Allowed `sortBy` values: `contentId`, `platform`, `views`, `favorites`, `calendar`, `ctaClicks`, `impressions`, `updatedAt`.
 
 #### Response
 
@@ -222,6 +223,7 @@ Allowed `sortBy` values: `contentId`, `views`, `favorites`, `calendar`, `ctaClic
   "data": [
     {
       "contentId": "article-123",
+      "platform": "web",
       "views": 42,
       "favorites": 0,
       "calendar": 0,
@@ -244,14 +246,14 @@ Counter fields are stored as `BigInt` in PostgreSQL but serialized as JSON numbe
 #### Example
 
 ```bash
-curl "http://localhost:3001/stats?page=1&limit=10&sortBy=views&sortOrder=desc&contentId=article&minViews=10"
+curl "http://localhost:3001/stats?page=1&limit=10&sortBy=views&sortOrder=desc&contentId=article&platform=web&minViews=10"
 ```
 
 ---
 
 ### GET /stats/:contentId
 
-Get aggregated stats for a single content item.
+Get aggregated stats for a single content item, broken down by platform.
 
 #### Path parameters
 
@@ -261,13 +263,50 @@ Get aggregated stats for a single content item.
 
 #### Response
 
-- **Status:** `200 OK` — single stat object (same shape as items in `GET /stats` `data` array)
-- **Status:** `404 Not Found` — no stat row for the given `contentId`
+- **Status:** `200 OK` — array of stat objects (one per platform; same shape as items in `GET /stats` `data` array)
+- **Status:** `404 Not Found` — no stat rows for the given `contentId`
 
 #### Example
 
 ```bash
 curl http://localhost:3001/stats/article-123
+```
+
+**Response:**
+
+```json
+[
+  {
+    "contentId": "article-123",
+    "platform": "android",
+    "views": 10,
+    "favorites": 0,
+    "calendar": 0,
+    "ctaClicks": 1,
+    "impressions": 30,
+    "updatedAt": "2026-06-29T10:00:00.000Z"
+  },
+  {
+    "contentId": "article-123",
+    "platform": "ios",
+    "views": 15,
+    "favorites": 0,
+    "calendar": 0,
+    "ctaClicks": 2,
+    "impressions": 45,
+    "updatedAt": "2026-06-29T10:00:00.000Z"
+  },
+  {
+    "contentId": "article-123",
+    "platform": "web",
+    "views": 42,
+    "favorites": 0,
+    "calendar": 0,
+    "ctaClicks": 3,
+    "impressions": 120,
+    "updatedAt": "2026-06-29T10:00:00.000Z"
+  }
+]
 ```
 
 ---
@@ -375,11 +414,12 @@ Events are stored in the `tracking_events` PostgreSQL table (`TrackingEvent` mod
 
 Aggregated stats are stored in two additional tables and exposed via read endpoints:
 
-**`stats`** (content-level counters, recalculated hourly):
+**`stats`** (per-content, per-platform counters, recalculated hourly):
 
 | Field         | DB column     | Type        |
 | ------------- | ------------- | ----------- |
-| `contentId`   | `content_id`  | varchar(100) PK |
+| `contentId`   | `content_id`  | varchar(100) PK (composite) |
+| `platform`    | `platform`    | varchar(50) PK (composite)  |
 | `views`       | `views`       | bigint      |
 | `favorites`   | `favorites`   | bigint      |
 | `calendar`    | `calendar`    | bigint      |

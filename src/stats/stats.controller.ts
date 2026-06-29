@@ -13,8 +13,8 @@ export class StatsController {
   }
 
   @Get('stats/:contentId')
-  findStatByContentId(@Param('contentId') contentId: string) {
-    return this.statsService.findStatByContentId(contentId);
+  findStatsByContentId(@Param('contentId') contentId: string) {
+    return this.statsService.findStatsByContentId(contentId);
   }
 
   @Get('daily-stats')
