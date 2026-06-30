@@ -414,7 +414,9 @@ Events are stored in the `tracking_events` PostgreSQL table (`TrackingEvent` mod
 
 Aggregated stats are stored in two additional tables and exposed via read endpoints:
 
-**`stats`** (per-content, per-platform counters, recalculated hourly):
+**`stats`** (per-content, per-platform counters, aggregated incrementally each hour):
+
+Content stats are updated hourly by processing only new events since the last run. A 5-minute safety lag excludes very recent events (events may commit after their `created_at` timestamp). Stats may be up to ~1 hour + 5 minutes behind real time. On first run (or via `npm run stats:recalculate-content`), a full rebuild truncates and re-aggregates all historical events.
 
 | Field         | DB column     | Type        |
 | ------------- | ------------- | ----------- |

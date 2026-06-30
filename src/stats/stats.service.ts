@@ -18,6 +18,7 @@ export interface PaginatedResponse<T> {
 @Injectable()
 export class StatsService {
   private readonly logger = new Logger(StatsService.name);
+  private readonly SAFETY_LAG_MINUTES = 5;
 
   constructor(private readonly prisma: PrismaService) {}
 
@@ -138,37 +139,112 @@ export class StatsService {
   }
 
   async recalculateContentStats(): Promise<{ rowsAffected: number }> {
-    this.logger.log('Recalculating content stats per platform');
+    const state = await this.prisma.statsAggregationState.findUnique({
+      where: { id: 1 },
+    });
+
+    if (!state) {
+      this.logger.log(
+        'No aggregation watermark found; running full content stats rebuild',
+      );
+      return this.rebuildContentStats();
+    }
+
+    this.logger.log('Incrementally recalculating content stats per platform');
 
     try {
       const rowsAffected = await this.prisma.$executeRaw`
-        INSERT INTO stats (content_id, platform, views, cta_clicks, impressions, updated_at)
-        SELECT
-          e.content_id,
-          e.platform,
-          COUNT(*) FILTER (WHERE e.event_type = 'view'),
-          COUNT(*) FILTER (WHERE e.event_type = 'cta_click'),
-          COUNT(*) FILTER (WHERE e.event_type = 'impression'),
-          now()
-        FROM tracking_events e
-        WHERE e.content_id IS NOT NULL
-          AND e.platform IN ('web', 'ios', 'android')
-        GROUP BY e.content_id, e.platform
-        ON CONFLICT (content_id, platform) DO UPDATE SET
-          views = EXCLUDED.views,
-          cta_clicks = EXCLUDED.cta_clicks,
-          impressions = EXCLUDED.impressions,
-          updated_at = EXCLUDED.updated_at
+        WITH bounds AS (
+          SELECT last_event_at AS watermark,
+                 (now() - (${this.SAFETY_LAG_MINUTES} || ' minutes')::interval) AS cutoff
+          FROM stats_aggregation_state
+          WHERE id = 1
+        ),
+        agg AS (
+          INSERT INTO stats (content_id, platform, views, cta_clicks, impressions, updated_at)
+          SELECT
+            e.content_id,
+            e.platform,
+            COUNT(*) FILTER (WHERE e.event_type = 'view'),
+            COUNT(*) FILTER (WHERE e.event_type = 'cta_click'),
+            COUNT(*) FILTER (WHERE e.event_type = 'impression'),
+            now()
+          FROM tracking_events e, bounds b
+          WHERE e.content_id IS NOT NULL
+            AND e.platform IN ('web', 'ios', 'android')
+            AND e.created_at > b.watermark
+            AND e.created_at <= b.cutoff
+          GROUP BY e.content_id, e.platform
+          ON CONFLICT (content_id, platform) DO UPDATE SET
+            views = stats.views + EXCLUDED.views,
+            cta_clicks = stats.cta_clicks + EXCLUDED.cta_clicks,
+            impressions = stats.impressions + EXCLUDED.impressions,
+            updated_at = EXCLUDED.updated_at
+        )
+        UPDATE stats_aggregation_state s
+        SET last_event_at = GREATEST(b.watermark, b.cutoff),
+            updated_at = now()
+        FROM bounds b
+        WHERE s.id = 1
       `;
 
       this.logger.log(
-        `Content stats recalculated: ${rowsAffected} row(s) affected`,
+        `Content stats incrementally updated: ${rowsAffected} row(s) affected`,
       );
 
       return { rowsAffected };
     } catch (error) {
       this.logger.error(
-        'Failed to recalculate content stats',
+        'Failed to incrementally recalculate content stats',
+        error instanceof Error ? error.stack : String(error),
+      );
+      throw error;
+    }
+  }
+
+  async rebuildContentStats(): Promise<{ rowsAffected: number }> {
+    this.logger.log('Rebuilding content stats from scratch');
+
+    try {
+      const rowsAffected = await this.prisma.$transaction(async (tx) => {
+        await tx.$executeRaw`TRUNCATE TABLE stats`;
+
+        return tx.$executeRaw`
+          WITH cutoff AS (
+            SELECT (now() - (${this.SAFETY_LAG_MINUTES} || ' minutes')::interval) AS ts
+          ),
+          agg AS (
+            INSERT INTO stats (content_id, platform, views, cta_clicks, impressions, updated_at)
+            SELECT
+              e.content_id,
+              e.platform,
+              COUNT(*) FILTER (WHERE e.event_type = 'view'),
+              COUNT(*) FILTER (WHERE e.event_type = 'cta_click'),
+              COUNT(*) FILTER (WHERE e.event_type = 'impression'),
+              now()
+            FROM tracking_events e, cutoff c
+            WHERE e.content_id IS NOT NULL
+              AND e.platform IN ('web', 'ios', 'android')
+              AND e.created_at <= c.ts
+            GROUP BY e.content_id, e.platform
+          )
+          INSERT INTO stats_aggregation_state (id, last_event_at, updated_at)
+          SELECT 1, c.ts, now()
+          FROM cutoff c
+          ON CONFLICT (id) DO UPDATE SET
+            last_event_at = EXCLUDED.last_event_at,
+            updated_at = EXCLUDED.updated_at
+        `;
+      });
+
+      this.logger.log(
+        `Content stats rebuilt: ${rowsAffected} row(s) affected`,
+      );
+
+      return { rowsAffected };
+    } catch (error) {
+      this.logger.error(
+        'Failed to rebuild content stats',
         error instanceof Error ? error.stack : String(error),
       );
       throw error;

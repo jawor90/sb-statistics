@@ -15,6 +15,7 @@
     "start:prod": "node scripts/migrate.js && node dist/main.js",
     "migrate:deploy": "node scripts/migrate.js",
     "stats:recalculate": "nest build && node dist/stats/recalculate-daily-stats.js",
+    "stats:recalculate-content": "nest build && node dist/stats/recalculate-content-stats.js",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "test": "jest",
     "test:watch": "jest --watch",
