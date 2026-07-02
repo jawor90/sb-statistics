@@ -15,6 +15,16 @@ export interface PaginatedResponse<T> {
   };
 }
 
+export type DailyStatResponse = Omit<DailyStat, 'day'> & { day: string };
+
+function formatDateOnly(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function parseDateOnly(value: string): Date {
+  return new Date(`${value.slice(0, 10)}T00:00:00.000Z`);
+}
+
 @Injectable()
 export class StatsService {
   private readonly logger = new Logger(StatsService.name);
@@ -87,7 +97,7 @@ export class StatsService {
 
   async findDailyStats(
     query: QueryDailyStatsDto,
-  ): Promise<PaginatedResponse<DailyStat>> {
+  ): Promise<PaginatedResponse<DailyStatResponse>> {
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
     const sortBy = query.sortBy ?? 'day';
@@ -99,11 +109,11 @@ export class StatsService {
       where.day = {};
 
       if (query.from) {
-        where.day.gte = new Date(query.from);
+        where.day.gte = parseDateOnly(query.from);
       }
 
       if (query.to) {
-        where.day.lte = new Date(query.to);
+        where.day.lte = parseDateOnly(query.to);
       }
     }
 
@@ -118,7 +128,10 @@ export class StatsService {
     ]);
 
     return {
-      data,
+      data: data.map(({ day, ...rest }) => ({
+        ...rest,
+        day: formatDateOnly(day),
+      })),
       pagination: {
         page,
         limit,

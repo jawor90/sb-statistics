@@ -12,6 +12,10 @@ function serializeBigInts(value: unknown): unknown {
     return Number(value);
   }
 
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+
   if (Array.isArray(value)) {
     return value.map(serializeBigInts);
   }

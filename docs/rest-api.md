@@ -337,7 +337,7 @@ Allowed `sortBy` values: `day`, `views`, `ctaClicks`, `impressions`, `uniqueSess
 {
   "data": [
     {
-      "day": "2026-06-28T00:00:00.000Z",
+      "day": "2026-06-28",
       "views": 1500,
       "ctaClicks": 45,
       "impressions": 3200,
